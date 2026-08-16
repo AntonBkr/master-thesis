@@ -1,0 +1,10 @@
+data/
+output/
+modelling/
+*.csv
+*.tif
+*.png
+*.gif
+.Rhistory
+.RData
+.Rproj.user/
