@@ -1,7 +1,12 @@
+# ============================================================
+# 06_static_model (Statisches Random-Forest-Modell)
+# ============================================================
+
+
 ### ------------------------------------------------------------
 ### 0. Setup laden
 ### ------------------------------------------------------------
-source("00_setup_master.R")
+source("src/00_setup_master.R")
 
 
 ### -------------------------------------------
@@ -16,7 +21,6 @@ model_data_path <- file.path(
   "tfinal",
   "final_hourly.csv"
 )
-
 
 # stations csv einladen
 final_hourly <- readr::read_csv(model_data_path, show_col_types = FALSE)
@@ -37,6 +41,7 @@ print(station_check) # -> RichtsbergGesamtschule hat die gleichen Temp. und RH w
 
 # b) Unplausible RH-Werte direkt anzeigen (RH sollte 0-100% sein)
 print(final_hourly %>% dplyr::filter(RH < 0 | RH > 100)) # -> GrossseelheimerStr: 2 (!) fehler-code zeilen (-0.1 TA/ 128 RH) -> muss raus
+
 
 
 ### ------------------------------------------------------------
@@ -61,6 +66,7 @@ clean_path <- file.path(
 )
 
 readr::write_csv(final_hourly_clean, clean_path)
+
 
 
 ### ---------------------------------------------------------
@@ -97,7 +103,7 @@ testingDat  <- model_data_static[-partition_indexes, ]
 cat("for training:", nrow(trainingDat), "& for testing:", nrow(testingDat))
 
 
-### Räumliche CV-Folds: Leave-One-Station-Out
+### Räumliche CV-Folds: Leave-One-Station-Out (damit wird sichergestellt, dass eine Station nicht gleichzeitig in Training und Validierung landet!)
 n_stations <- dplyr::n_distinct(trainingDat$plot) # = 22
 
 # funktion teilt die Daten in 22 Gruppen (eine pro Station)
@@ -371,4 +377,43 @@ ggplot2::ggsave(
   file.path(envrmt$path_figures, "static_Ta_200_observed_vs_predicted.png"),
   obs_pred_static_plot, width = 7, height = 6, dpi = 300
 )
+
+
+
+
+### ------------------------------------------------------------
+### 11. getuntes statisches RF modell (nur für AOA!)
+### ------------------------------------------------------------
+
+set.seed(625)
+
+rf_model_static_tuned <- caret::train(
+  x = trainingDat[, predictor_names],
+  y = trainingDat$Ta_200,
+  method = "rf",
+  tuneGrid = expand.grid(mtry = 1:10),
+  trControl = ctrl,
+  metric = "RMSE",
+  importance = TRUE
+)
+
+print(rf_model_static_tuned)
+
+# bester mtry wert
+rf_model_static_tuned$bestTune
+
+# Ergebnisse aller getesteten mtry Werte
+rf_model_static_tuned$results
+
+# speichern
+saveRDS(
+  rf_model_static_tuned,
+  file.path(
+    envrmt$path_models,
+    "rf_static_model_tuned_for_AOA.rds"
+  )
+)
+
+
+## > mtry 3 ist wirklich das beste static modell ! 
 
