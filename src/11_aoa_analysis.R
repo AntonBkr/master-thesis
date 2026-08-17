@@ -33,15 +33,12 @@ model_data_dynamic <- dplyr::left_join(final_hourly_clean, hourly_context, by = 
 
 # corr berechnen!
 cor(model_data_dynamic$Ta_200, model_data_dynamic$hourly_network_mean_Ta_200)
+
 # > 0.9687229 
-# > sind fast perfekt linear zusammenhängend 
-# > bei so hoher korr., bevorzugt das modell diesen predictor stark 
-# > erklärt fast gesamte Varianz von Ta200
-## > deswegen dominiert es so in var_imp !
-
-
-
-
+  # > sind fast perfekt linear zusammenhängend (fast 1)
+  # > bei so hoher korr., bevorzugt das modell diesen predictor stark 
+  # > erklärt fast gesamte Varianz von Ta200
+    # > deswegen dominiert es so in var_imp !
 
 
 ### ------------------------------------------------------------
@@ -51,11 +48,10 @@ cor(model_data_dynamic$Ta_200, model_data_dynamic$hourly_network_mean_Ta_200)
 ### daten einladen
 
 # STATIC modell laden
-static_model_path <- file.path(envrmt$path_models, "rf_static_model.rds")
+static_model_path <- file.path(envrmt$path_models, "rf_static_model_tuned_for_AOA.rds")
 
-static_model <- read_rds(static_model_path)
+static_model <- readRDS(static_model_path)
 static_model
-
 
 # 10m pred stack laden
 pred_stack_path <- file.path(envrmt$path_predictors_stack, "predictor_stack_10m.tif")
@@ -64,22 +60,66 @@ pred_stack <- rast(pred_stack_path)
 plot(pred_stack)
 
 
-# stationen data (station + x/y + 10 predictor-werte)
+# 22 zeilen (= 22 stationen) mit 1nem pred-wert (da statisch bleibt er ja gleich)
 stations_aoa <- final_hourly_clean |>
-  dplyr::select(
-    plot,
-    x, y,
-    elevation,
-    aspect_cos,
-    aspect_sin,
-    beb_100,
-    beb_250,
-    beb_50,
-    dist_lahn,
-    ndvi,
-    slope,
-    versiegelung
-  ) |>
-  dplyr::distinct(plot, .keep_all = TRUE)
+  dplyr::distinct(plot, .keep_all = TRUE) |> # "gruppiert" nach station mit dem ERSTEN wert der preds // .keep_all = TRUE -> alle spalten werden behalten!
+  dplyr::select(plot, x, y,
+                elevation, slope, aspect_sin, aspect_cos,
+                versiegelung, dist_lahn, beb_50,
+                beb_100, beb_250, ndvi)
+stations_aoa
 
+
+# aoa berechnen
+aoa_final <- CAST::aoa(
+  newdata = pred_stack,   
+  model   = static_model)
+
+print(aoa_final)
+
+# alles > 0,86 = außerhalb (alles darunter = innerhalb)
+
+# Predictor Weights:
+  #  elevation    slope aspect_cos aspect_sin   beb_50  beb_100  beb_250 dist_lahn     ndvi versiegelung
+  #  18.32711 13.91601   15.17348   18.56477 16.23112 20.39111 13.03247  20.32933 21.33797     14.47342
+
+# DI und AOA plot
+terra::plot(aoa_final$DI)
+terra::plot(aoa_final$AOA)
+
+
+### flächenanteile von 0/1 der aoa berechnen
+
+# Häufigkeiten der Klassen 0 und 1 zählen
+freq_tab <- terra::freq(aoa_final$AOA)
+freq_tab
+
+# Flächenanteile in % berechnen
+freq_tab$prozent <- round(100 * freq_tab$count / sum(freq_tab$count), 1)
+freq_tab
+# > 87.3% = 1 (innerhalb der AOA)
+# > 12.7% = 0 (außerhalb)
+
+
+# tatsächliche Fläche in km² (bei 10m auflösung = 100 m² pro Pixel)
+freq_tab$flaeche_km2 <- round(freq_tab$count * 100 / 1e6, 2)
+freq_tab
+# > 19.83 km² = 1
+# >  2.88 km² = 0
+
+
+# aoa pngs / tifs abspeichern
+terra::writeRaster(aoa_final$AOA, file.path(envrmt$path_aoa, "aoa_static_AOA.tif"), overwrite = TRUE)
+terra::writeRaster(aoa_final$DI,  file.path(envrmt$path_aoa, "aoa_static_DI.tif"),  overwrite = TRUE)
+
+
+png(file.path(envrmt$path_aoa, "aoa_static_AOA.png"),
+    width = 1600, height = 2000, res = 200)
+terra::plot(aoa_final$AOA, main = "Area of Applicability (statisches Modell)")
+dev.off()
+
+png(file.path(envrmt$path_aoa, "aoa_static_DI.png"),
+    width = 1600, height = 2000, res = 200)
+terra::plot(aoa_final$DI, main = "Dissimilarity Index (statisches Modell)")
+dev.off()
 

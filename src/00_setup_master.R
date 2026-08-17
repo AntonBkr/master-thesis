@@ -96,6 +96,7 @@ projectDirList <- c(
   "output/maps/dynamic_png",
   "output/maps/dynamic_tif_tuned",
   "output/maps/dynamic_png_tuned",
+  "output/maps/aoa",
   "output/figures/",
   "output/tables/",
   "output/gifs",
