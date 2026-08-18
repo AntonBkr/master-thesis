@@ -354,6 +354,8 @@ terra::plot(differenz_karte, main = "Differenz: XGBoost - RF (02.07., 14 Uhr)")
 # -> deutet auf größere Abweichungen in extrapolierten Bereichen hin (evtl. AOA-Zusammenhang)
 # -> Entscheidung "voller Loop ja/nein" noch offen, siehe Merkzettel/Notizen
 
-
-
-
+terra::writeRaster(
+  differenz_karte,
+  file.path(envrmt$path_maps, "differenz_karte_rf_xgb.tif"),
+  overwrite = TRUE
+)
