@@ -54,7 +54,8 @@ packagesToLoad <- c(
   "CAST",
   "corrplot",
   "doParallel",
-  "magick"
+  "magick",
+  "xgboost"
 )
 
 

@@ -123,3 +123,9 @@ png(file.path(envrmt$path_aoa, "aoa_static_DI.png"),
 terra::plot(aoa_final$DI, main = "Dissimilarity Index (statisches Modell)")
 dev.off()
 
+
+### Interpretation:
+
+# die AOA Karte zeigt, wo meine Vorhersagen vertrauenswürdig sind, nämlich dort, wo die Landschaft (Höhe, Bebauung, Vegetation) 
+# ähnlich zu einer meiner 22 Messstationen ist. Wo das nicht der Fall ist, rät das Modell eher statt zu wissen
+
