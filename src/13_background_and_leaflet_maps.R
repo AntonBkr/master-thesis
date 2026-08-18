@@ -63,6 +63,8 @@ plots[[1]]
 ### ===============================
 ### interaktive Karten v1 
 ### ===============================
+# > nur eine globale Deckkraft für das ganze Bild/Raster 
+
 
 # weltkarte und namen holen
 karte_interaktiv <- leaflet() |>
@@ -117,17 +119,20 @@ browseURL(file.path(envrmt$path_maps, "klimakarten_interaktiv.html"))
 
 
 ### ===============================
-### interaktive Karte v2 --> NUR zum Testen der Transparenz, Original bleibt unangetastet
+### interaktive Karte v2
 ### ===============================
+# >jeder pixel hat seine EIGENE Deckkraft basierend auf seinem Wert/Value 
+# > gibt keine Parameter dafür in leaflet -> Transparenz selbst in Farbcodes einbauen, die sowieso schon pro pixel berechnet werden 
+
 
 ### Hilfsfunktion: normale Farbskala -> Farbskala mit wertabhängiger Transparenz  (niedrige Werte werden durchsichtig, hohe Werte bleiben kräftig eingefärbt)
 make_alpha_pal <- function(farb_pal, values, alpha_range = c(0, 255)) {
-  rng <- range(values, na.rm = TRUE)
-  function(x) {
-    hex <- farb_pal(x)
-    a <- scales::rescale(x, to = alpha_range, from = rng)
-    a_hex <- sprintf("%02X", as.integer(round(a)))
-    out <- paste0(hex, a_hex)
+  rng <- range(values, na.rm = TRUE) # einfach value range (wichtig für alpha_range umrechnung)
+  function(x) { # eine funktion die eine funktion baut > zurückgegebene funktion wird später von leaflet für jeden einzelnen pixelwert (x) aufgerufen!
+    hex <- farb_pal(x) # pixelwert wird in regluäre farbe "übersetzt"
+    a <- scales::rescale(x, to = alpha_range, from = rng) # pixelwert "X" wird von wertebereich "range" (bspw. 0-300) auf alpha bereich umgerechnet (0-255)!!! 
+    a_hex <- sprintf("%02X", as.integer(round(a))) # wandelt alpha zahl in zweistellige Hexadezimalzahl um ("B4" für alpha range von 180 bspw.)
+    out <- paste0(hex, a_hex) # farbe und trasnparenz zusammen"kleben" > eine einzige Farbangabe, die sowohl Farbton als auch Durchsichtigkeit trägt! (bsp: aus "#FCA636" und "B4" wird "#FCA636B4")
     out[is.na(x)] <- NA   # echte NA-Werte bleiben NA statt "transparentNA"
     out
   }
@@ -167,7 +172,7 @@ karte_interaktiv_v2 <- karte_interaktiv_v2 |>
 # abspeichern
 htmlwidgets::saveWidget(
   karte_interaktiv_v2,
-  file.path(envrmt$path_maps, "klimakarten_interaktiv_v2.html"),   # anderer Dateiname!
+  file.path(envrmt$path_maps, "klimakarten_interaktiv_v2.html"),   # anderer Dateiname weil andere Version!!
   selfcontained = TRUE
 )
 
