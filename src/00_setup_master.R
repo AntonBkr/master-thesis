@@ -55,7 +55,10 @@ packagesToLoad <- c(
   "corrplot",
   "doParallel",
   "magick",
-  "xgboost"
+  "xgboost",
+  "maptiles",
+  "tidyterra",
+  "leaflet"
 )
 
 
