@@ -405,38 +405,63 @@ final_gif <- magick::image_animate(pic_stack, fps = 10)
 magick::image_write(final_gif, path = file.path(envrmt$path_maps, "marburg_ta200_animation.gif"))
 
 
+### - test 
 
 ### ==========================================
 ### GIF: Stündliche Karten, automatische Pro-Stunde-Skala
 ### ==========================================
-# nutzt die BEREITS vorhandenen auto-skalierten PNGs aus dynamic_png_tuned
-# -> kein neues Rendern noetig, nur der magick-Zusammenbau!
+# NEU: eigene Frames rendern (nicht mehr die alten PNGs aus dynamic_png_tuned nutzen!)
+# Grund: die dortigen Titel wurden beim OneDrive-Revert-Fix mit main=names(r) überschrieben,
+# das zeigt KEIN Datum mehr. Hier neu rendern, mit korrektem Zeitstempel im Titel.
 
-# 1. alle vorhandenen PNG-Pfade auflisten
+# Funktion fast identisch zu make_gif_frame(), aber OHNE range= (automatische Skala pro Stunde)
+make_gif_frame_autoscale <- function(layer_index) {
+  
+  r <- hourly_tif_data_tuned[[layer_index]]
+  time_stamp <- hourly_meta$datetime[[layer_index]]
+  
+  # WICHTIG: anderer Dateiname-Präfix ("autoscale_"), damit nichts mit den
+  # "frame_XXXX.png"-Dateien vom ersten GIF kollidiert (gleicher Ordner!)
+  frame_path <- file.path(envrmt$path_gifs, paste0("autoscale_", sprintf("%04d", layer_index), ".png"))
+  
+  png(filename = frame_path, width = 800, height = 640, res = 150)
+  terra::plot(r, main = format(time_stamp, "%Y-%m-%d %H:%M"))   # kein range= -> automatische Skala
+  dev.off()
+  
+  return(frame_path)
+}
+
+# Loop über alle 2.898 Frames (identisches Muster wie beim ersten GIF)
+system.time({
+  for (i in 1:n_frames) {
+    cat("Verarbeite Autoscale-Frame", i, "von", n_frames, "\n")
+    tryCatch({
+      make_gif_frame_autoscale(i)
+    }, error = function(e) {
+      cat("FEHLER bei Frame", i, ":", conditionMessage(e), "\n")
+    })
+  }
+})
+
+# GIF-Zusammenbau: NUR die "autoscale_"-Dateien einsammeln (nicht die "frame_"-Dateien vom ersten GIF!)
 hourly_auto_frame_paths <- list.files(
-  envrmt$path_dynamic_png_tuned,
-  pattern = "\\.png$",
+  envrmt$path_gifs,
+  pattern = "^autoscale_.*\\.png$",   # <- Pattern jetzt spezifisch auf "autoscale_" eingegrenzt
   full.names = TRUE
 )
 
-# 2. einlesen + verkleinern (gleiches Prinzip wie beim ersten GIF-Versuch)
 hourly_auto_pics_minimized <- lapply(hourly_auto_frame_paths, function(pfad) {
   bild <- magick::image_read(pfad)
   magick::image_scale(bild, "600")
 })
 
-# 3. zu einem Stapel zusammenfuegen
 hourly_auto_stack <- magick::image_join(hourly_auto_pics_minimized)
-
-# 4. gif-nimieren
 hourly_auto_gif <- magick::image_animate(hourly_auto_stack, fps = 10)
 
-# 5. speichern
 magick::image_write(
   hourly_auto_gif,
   path = file.path(envrmt$path_maps, "marburg_ta200_hourly_autoscale_animation.gif")
 )
-
 
 
 
