@@ -169,6 +169,7 @@ karte_interaktiv_v2 <- karte_interaktiv_v2 |>
   addLayersControl(overlayGroups = alle_titel, options = layersControlOptions(collapsed = FALSE)) |>
   hideGroup(alle_titel[-1])
 
+
 # abspeichern
 htmlwidgets::saveWidget(
   karte_interaktiv_v2,
