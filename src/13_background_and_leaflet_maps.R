@@ -8,13 +8,13 @@ karten_liste <- list(
   list(raster = rast(file.path(envrmt$path_maps, "waermebelastung_karte_tuned.tif")),
        titel = "Kontinuierlicher Wärmebelastungsindex", legende = "Index", datei = "waermebelastung"),
   list(raster = rast(file.path(envrmt$path_maps, "heisse_stunden_karte_tuned.tif")),
-       titel = "Anzahl heißer Stunden", legende = "Stunden", datei = "heisse_stunden"),
+       titel = "Anzahl heißer Stunden", legende = "Anzahl heißer Stunden (T >= 30°C)", datei = "heisse_stunden"),
   list(raster = rast(file.path(envrmt$path_maps, "nacht_mean_temp_karte_tuned.tif")),
        titel = "Durchschnittliche Nachttemperatur", legende = "°C", datei = "nacht_mean_temp"),
   list(raster = rast(file.path(envrmt$path_maps, "tropen_naechte_karte_tuned.tif")),
-       titel = "Anzahl der Tropennächte", legende = "Nächte", datei = "tropen_naechte"),
+       titel = "Anzahl der Tropennächte", legende = "Anzahl der Tropennächte (T >= 20°C)", datei = "tropen_naechte"),
   list(raster = rast(file.path(envrmt$path_maps, "hitze_tage_karte_tuned.tif")),
-       titel = "Anzahl heißer Tage", legende = "Tage", datei = "hitze_tage")
+       titel = "Anzahl heißer Tage", legende = "Anzahl der Hitzetage (T >= 30°C)", datei = "hitze_tage")
 )
 
 
@@ -145,7 +145,7 @@ karte_interaktiv_v2 <- leaflet() |>
 
 # für jede der 5 Klimakarten einen eigenen Layer bauen
 for (k in karten_liste) {
-  r_klein <- terra::aggregate(k$raster, fact = 4) # Raster verkleinern, sonst wird die eingebettete HTML-Datei zu groß/schwer
+  r_klein <- terra::aggregate(k$raster, fact = 2) # Raster verkleinern, sonst wird die eingebettete HTML-Datei zu groß/schwer
   r_wgs84 <- terra::project(r_klein, "EPSG:4326") # nach wgs84 umprojizieren
   
   # "echte" Farbskala nur für die Legende (braucht die speziellen colorNumeric-Zusatzinfos)
@@ -161,6 +161,40 @@ for (k in karten_liste) {
               position = "bottomright", group = k$titel)
 }
 
+
+### ------------------------------------------------------------
+### Stationspunkte auf die interaktive Karte legen
+### ------------------------------------------------------------
+
+# Koordinaten laden (gleiche Datei wie bei den statischen Karten)
+stationen <- read.csv(file.path(envrmt$path_processed_stations, "station_coordinates_climodR.csv"))
+
+# WICHTIG: kurz selbst checken, wie die Namens-Spalte heißt (vermutlich "plot")
+head(stationen)
+
+# nur eine Zeile pro Station (absicherung -> eig unnötig!)
+stationen_eindeutig <- unique(stationen[, c("plot", "x", "y")])
+stationen_eindeutig
+
+# von UTM32N nach WGS84 umprojizieren (gleiche Logik wie bei den Rastern, nur für Punkte)
+stationen_vect <- terra::vect(stationen_eindeutig, geom = c("x", "y"), crs = "EPSG:25832")
+stationen_wgs84 <- terra::project(stationen_vect, "EPSG:4326")
+stationen_coords <- terra::crds(stationen_wgs84)
+
+# Punkte auf die Karte legen (bleiben bei JEDEM Layer sichtbar, da nicht Teil der Gruppen)
+karte_interaktiv_v2 <- karte_interaktiv_v2 |>
+  addCircleMarkers(
+    lng = stationen_coords[, "x"],
+    lat = stationen_coords[, "y"],
+    label = stationen_eindeutig$plot,     # Name beim Drüberfahren mit der Maus
+    popup = stationen_eindeutig$plot,     # Name beim Anklicken
+    radius = 5,
+    color = "white",
+    fillColor = "black",
+    fillOpacity = 0.85,
+    weight = 2
+  )
+
 # namen aller 5 kartentitel
 alle_titel <- sapply(karten_liste, function(k) k$titel)
 
@@ -173,12 +207,12 @@ karte_interaktiv_v2 <- karte_interaktiv_v2 |>
 # abspeichern
 htmlwidgets::saveWidget(
   karte_interaktiv_v2,
-  file.path(envrmt$path_maps, "klimakarten_interaktiv_v2.html"),   # anderer Dateiname weil andere Version!!
+  file.path(envrmt$path_maps, "klimakarten_interaktiv_v2_stationpoints.html"),   # anderer Dateiname weil andere Version!!
   selfcontained = TRUE
 )
 
 # direkt im browser öffnen, nicht im R-panel
-browseURL(file.path(envrmt$path_maps, "klimakarten_interaktiv_v2.html"))
+browseURL(file.path(envrmt$path_maps, "klimakarten_interaktiv_v2_stationpoints.html"))
 
 
 
