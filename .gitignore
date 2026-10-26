@@ -8,3 +8,7 @@ modelling/
 .Rhistory
 .RData
 .Rproj.user/
+
+tmp/
+*.RDataTmp
+notizen/

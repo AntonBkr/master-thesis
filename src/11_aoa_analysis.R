@@ -49,26 +49,13 @@ cor(model_data_dynamic$Ta_200, model_data_dynamic$hourly_network_mean_Ta_200)
 
 # STATIC modell laden
 static_model_path <- file.path(envrmt$path_models, "rf_static_model_tuned_for_AOA.rds")
-
 static_model <- readRDS(static_model_path)
 static_model
 
 # 10m pred stack laden
 pred_stack_path <- file.path(envrmt$path_predictors_stack, "predictor_stack_10m.tif")
-
 pred_stack <- rast(pred_stack_path)
 plot(pred_stack)
-
-
-# 22 zeilen (= 22 stationen) mit 1nem pred-wert (da statisch bleibt er ja gleich)
-stations_aoa <- final_hourly_clean |>
-  dplyr::distinct(plot, .keep_all = TRUE) |> # "gruppiert" nach station mit dem ERSTEN wert der preds // .keep_all = TRUE -> alle spalten werden behalten!
-  dplyr::select(plot, x, y,
-                elevation, slope, aspect_sin, aspect_cos,
-                versiegelung, dist_lahn, beb_50,
-                beb_100, beb_250, ndvi)
-stations_aoa
-
 
 # aoa berechnen
 aoa_final <- CAST::aoa(
@@ -76,12 +63,11 @@ aoa_final <- CAST::aoa(
   model   = static_model)
 
 print(aoa_final)
-
-# alles > 0,86 = außerhalb (alles darunter = innerhalb)
+# alles > 0,78 = außerhalb (alles darunter = innerhalb)
 
 # Predictor Weights:
-  #  elevation    slope aspect_cos aspect_sin   beb_50  beb_100  beb_250 dist_lahn     ndvi versiegelung
-  #  18.32711 13.91601   15.17348   18.56477 16.23112 20.39111 13.03247  20.32933 21.33797     14.47342
+#  elevation    slope aspect_cos aspect_sin   beb_50  beb_100  beb_250     ndvi versiegelung
+#   17.36687 12.86626   19.06830   21.05280 16.85393 20.73753 15.85186 18.91836     17.77877
 
 # DI und AOA plot
 terra::plot(aoa_final$DI)
@@ -97,15 +83,15 @@ freq_tab
 # Flächenanteile in % berechnen
 freq_tab$prozent <- round(100 * freq_tab$count / sum(freq_tab$count), 1)
 freq_tab
-# > 87.3% = 1 (innerhalb der AOA)
-# > 12.7% = 0 (außerhalb)
+# > 90,2% = 1 (innerhalb der AOA)
+# >  9,8% = 0 (außerhalb)
 
 
 # tatsächliche Fläche in km² (bei 10m auflösung = 100 m² pro Pixel)
 freq_tab$flaeche_km2 <- round(freq_tab$count * 100 / 1e6, 2)
 freq_tab
-# > 19.83 km² = 1
-# >  2.88 km² = 0
+# > 20.48 km² = 1
+# >  2.23 km² = 0
 
 
 # aoa pngs / tifs abspeichern
@@ -123,9 +109,6 @@ png(file.path(envrmt$path_aoa, "aoa_static_DI.png"),
 terra::plot(aoa_final$DI, main = "Dissimilarity Index (statisches Modell)")
 dev.off()
 
-
 ### Interpretation:
-
-# die AOA Karte zeigt, wo meine Vorhersagen vertrauenswürdig sind, nämlich dort, wo die Landschaft (Höhe, Bebauung, Vegetation) 
-# ähnlich zu einer meiner 22 Messstationen ist. Wo das nicht der Fall ist, rät das Modell eher statt zu wissen
-
+  # die AOA Karte zeigt, wo meine Vorhersagen vertrauenswürdig sind, nämlich dort, wo die Landschaft (Höhe, Bebauung, Vegetation) 
+  # ähnlich zu einer meiner 22 Messstationen ist. Wo das nicht der Fall ist, rät das Modell eher statt zu wissen

@@ -1,7 +1,7 @@
 ### ------------------------------------------------------------
 ### 0. Setup laden & daten einladen
 ### ------------------------------------------------------------
-source("00_setup_master.R")
+source("src/00_setup_master.R")
 
 # pth festlegen
 final_hourly_path <- file.path(
@@ -24,8 +24,7 @@ final_hourly_clean <- readr::read_csv(final_hourly_path, show_col_types = FALSE)
 # predictoren festlegen
 predictor_names <- c(
   "elevation", "slope", "aspect_cos", "aspect_sin",
-  "beb_50", "beb_100", "beb_250",
-  "dist_lahn", "ndvi", "versiegelung"
+  "beb_50", "beb_100", "beb_250", "ndvi", "versiegelung"
 )
 
 
@@ -66,13 +65,13 @@ dim(model_data_dynamic) # 62114 14
 predictor_names_dynamic <- c(
   "elevation", "slope", "aspect_cos", "aspect_sin",
   "beb_50", "beb_100", "beb_250",
-  "dist_lahn", "ndvi", "versiegelung", "hourly_network_mean_Ta_200"
+  "ndvi", "versiegelung", "hourly_network_mean_Ta_200"
 )
 
 
 
 ### ------------------------------------------------------------
-### 3. räumliche cv-folds (evtl mit punkt 2 zusammen in eine überschrift!) > analog zu script 6 > genauer informieren "was das macht"
+### 3. räumliche cv-folds (evtl mit punkt 2 zusammen in eine überschrift!) > analog zu script 6
 ### ------------------------------------------------------------
 
 # Training/Test-Split 
@@ -134,7 +133,7 @@ rf_model_dynamic <- caret::train(
 
 print(rf_model_dynamic)
 # RMSE      Rsquared   MAE     
-# 2.402475  0.9206547  1.774264
+# 2.191044  0.9298709  1.622806
 
 
 saveRDS(rf_model_dynamic, file.path(envrmt$path_models, "rf_dynamic_model.rds"))
@@ -247,7 +246,7 @@ readr::write_csv(varimp_dynamic_df, file.path(envrmt$path_tables, "dynamic_Ta_20
 ggplot2::ggsave(file.path(envrmt$path_figures, "dynamic_Ta_200_variable_importance.png"), varimp_dynamic_plot, width = 8, height = 6, dpi = 300)
 
 ### WICHTIG:
-# die hohe Modellgüte (R²=0,92) kommt fast ausschließlich vom Netzwerk-Mittel 
+# die hohe Modellgüte (R²=0,93) kommt fast ausschließlich vom Netzwerk-Mittel 
 # das Modell sagt im Grunde "wie warm ist es gerade im Netzwerk-Durchschnitt"
 # und die räumlichen UHI-Unterschiede (Versiegelung, NDVI etc.) spielen für die reine Fehlerminimierung kaum noch eine Rolle
 # -> Muss in Diskussion: modell zu stark zeitgetrieben
@@ -297,7 +296,7 @@ print(names(map_predictors_static))
 ### wichtig! 
 make_hourly_map <- function(current_datetime) {
   
-  # 1. Netzwerk-Mittel fuer genau diese Stunde holen
+  # 1. Netzwerk-Mittel für genau diese Stunde holen
   current_context <- hourly_context %>%
     dplyr::filter(datetime == current_datetime)
   
@@ -313,17 +312,14 @@ make_hourly_map <- function(current_datetime) {
   # 4. Stack zusammenfuegen
   hour_stack <- c(map_predictors_static, network_mean_raster)
   
-  # 5. aktuelle datetime sieht bsp so aus: "2025-07-02 14:00:00"
-    # -> windows dateinamen erlauben keine doppelpunkte und am besten auch keine leerzeichen (!)
-  datetime_string <- gsub(":", "-", current_datetime)  # doppelpunkte raus
-  
-  datetime_string <- gsub(" ", "_", datetime_string)   # leerzeichen leerzeichen raus
+  # 5. Dateinamen bauen - format() statt gsub(), sonst fehlt um Mitternacht die Uhrzeit (wie in Skript 09)
+  # -> windows dateinamen erlauben keine doppelpunkte und am besten auch keine leerzeichen (!)
+  datetime_string <- format(current_datetime, "%Y-%m-%d_%H-%M-%S")
   
   out_path_tif <- file.path(
     envrmt$path_dynamic_tif,
     paste0("Ta_200_dynamic_", datetime_string, ".tif")
   )
-  
   
   # 6. Vorhersage - Raster zuerst, Modell zweitens, dann die fun-Übersetzung
   pred_hour <- terra::predict(  # gleiche wie in script 6
@@ -353,7 +349,7 @@ make_hourly_map <- function(current_datetime) {
 
 
 ### ------------------------------------------------------------
-### 10. heißeste, kälteste und medianste stunde filtern und plotten
+### 10. heißeste, kälteste und medianste stunde filtern und plotten > kann evtl gelöscht werden? 
 ### ------------------------------------------------------------
 
   # muss aus network mean Ta200 abgeleitet werden, weil "model_data_dynamic" hat eine Zeile pro Station UND stunde

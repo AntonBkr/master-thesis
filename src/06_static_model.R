@@ -26,7 +26,8 @@ model_data_path <- file.path(
 final_hourly <- readr::read_csv(model_data_path, show_col_types = FALSE)
 
 
-### Wertecheck (vor der modellierung nochmal final die Werte des modellierungsdatensatzes überprüfen)
+### Wertecheck: 
+
 # a) pro Station: wie oft ist Ta_200 exakt gleich RH? (das war der Hinweis auf die vertauschte Rohdatei bei Richtsberg)
 station_check <- final_hourly %>%
   dplyr::group_by(plot) %>%
@@ -38,6 +39,7 @@ station_check <- final_hourly %>%
   dplyr::arrange(dplyr::desc(anteil_gleich))
 
 print(station_check) # -> RichtsbergGesamtschule hat die gleichen Temp. und RH werte! (wurde einfach kopiert!)
+
 
 # b) Unplausible RH-Werte direkt anzeigen (RH sollte 0-100% sein)
 print(final_hourly %>% dplyr::filter(RH < 0 | RH > 100)) # -> GrossseelheimerStr: 2 (!) fehler-code zeilen (-0.1 TA/ 128 RH) -> muss raus
@@ -54,7 +56,7 @@ final_hourly_clean <- final_hourly %>%
   dplyr::filter(!(RH < 0 | RH > 100)) %>%   # entfernt NUR die Sensor Fehlercode Zeilen (also alles RH außerhalb von 0-100%)
   dplyr::select(-RH)                        # danach erst ganze RH rauswerfen
 
-cat("Entfernt:", nrow(final_hourly) - nrow(final_hourly_clean), "\n") # 2 wurden entfernt (siehe oben!)
+cat("entfernt:", nrow(final_hourly) - nrow(final_hourly_clean), "\n") # 2 wurden entfernt (siehe oben!)
 
 # path
 clean_path <- file.path(
@@ -76,8 +78,7 @@ readr::write_csv(final_hourly_clean, clean_path)
 # statische Predictoren (analog zu deinem Daily-Workflow, ohne Zeit-Komponente)
 predictor_names <- c(
   "elevation", "slope", "aspect_cos", "aspect_sin",
-  "beb_50", "beb_100", "beb_250",
-  "dist_lahn", "ndvi", "versiegelung"
+  "beb_50", "beb_100", "beb_250", "ndvi", "versiegelung" # dist_lahn bewusst nicht verwendet (siehe Methodik)
 )
 
 # nur modellierng-relevanten daten auswählen
@@ -86,14 +87,14 @@ model_data_static <- final_hourly_clean %>%
   tidyr::drop_na()
 
 
-# Training/Test-Split 
+# seed
 set.seed(707)
 
-# teilen
+### 80/20 split in trainings und testdaten!
 partition_indexes <- caret::createDataPartition(
   model_data_static$plot,
   times = 1,
-  p = 0.8, # 80% training
+  p = 0.8, # pro Station kommen 80% der stunden ins training, 20 in test (!!! Split ist zeitlich, nicht räumlich -> jede Station ist in beiden Teilen vertreten!!!) > Analss für LOSO
   list = FALSE
 )
 
@@ -103,10 +104,10 @@ testingDat  <- model_data_static[-partition_indexes, ]
 cat("for training:", nrow(trainingDat), "& for testing:", nrow(testingDat))
 
 
-### Räumliche CV-Folds: Leave-One-Station-Out (damit wird sichergestellt, dass eine Station nicht gleichzeitig in Training und Validierung landet!)
+### Räumliche CV-Folds: Leave-One-Station-Out LOSO (damit wird sichergestellt, dass eine Station nicht gleichzeitig in Training und Validierung landet!)
 n_stations <- dplyr::n_distinct(trainingDat$plot) # = 22
 
-# funktion teilt die Daten in 22 Gruppen (eine pro Station)
+# funktion (CreateSpacetimeFolds()) teilt die Daten in 22 Gruppen (eine pro Station)
   # -> zeilen werden so nicht einfach wild gemischt (sonst training und test zeilen von selber station!)
   # -> baut also die 22 fairen testgruppen
 fold <- CAST::CreateSpacetimeFolds(
@@ -133,7 +134,7 @@ rf_model_static <- caret::train(
   x = trainingDat[, predictor_names], # Predictors = static predictors
   y = trainingDat$Ta_200, # zielvariable = Ta_200
   method = "rf",
-  tuneGrid = expand.grid(mtry = 3), # mtry = wie viele der 10 Predictoren pro Split zufällig zur Auswsahl stehen
+  tuneGrid = expand.grid(mtry = 3), # mtry = wie viele der 9 (dist_lahn rausgenommen!) Predictoren pro Split zufällig zur Auswsahl stehen
   trControl = ctrl, # nutzt oben definierten folds
   metric = "RMSE",
   importance = TRUE
@@ -141,8 +142,8 @@ rf_model_static <- caret::train(
 
 print(rf_model_static)
 
-# RMSE     6.27918
-# MAE      4.968953
+# RMSE     6.280871
+# MAE      4.967469
 # Rsquared NaN: bei Leave-One-Station-Out sind alle Predictor-Werte einer rausgehaltenen Station identisch 
   # -> Modell sagt für alle ihre ~2.900 Stunden denselben Wert voraus
     # -> keine Varianz in der Vorhersage 
@@ -157,7 +158,7 @@ saveRDS(
 
 
 ### ------------------------------------------------------------
-### 05. Testdaten vorhersagen + RMSE pro Station
+### 05. Testdaten vorhersagen + RMSE pro Station berechnen
 ### ------------------------------------------------------------
 
 # vorhersage auf Test Data (die 20%, die nie im Training waren)
@@ -175,18 +176,18 @@ station_validation_static <- testingDat %>%
   dplyr::group_by(plot) %>%
   dplyr::summarise(
     n = dplyr::n(),
-    RMSE = sqrt(mean(residual^2)),
-    MAE = mean(abs(residual)),
-    .groups = "drop"
+    RMSE = sqrt(mean(residual^2)), # nach formel berechnet
+    MAE = mean(abs(residual)), # nach formel berechnet
+    .groups = "drop" # rest verwerdfen
   ) %>%
-  dplyr::arrange(dplyr::desc(RMSE))
+  dplyr::arrange(dplyr::desc(RMSE)) # sortieren
 
 print(station_validation_static)
 plot(station_validation_static)
 
 
 ### ----------------------------------------------
-### 06. Plot: RMSE pro Station (static-Modell)
+### 06. Plot: RMSE pro Station plotten (static-Modell)
 ### ----------------------------------------------
 
 # Balkendiagramm bauen: eine Station pro Balken, sortiert nach RMSE
@@ -304,17 +305,18 @@ map_predictors_static <- pred_stack[[predictor_names]]
 print(names(map_predictors_static))
 
 
-# RASTER-Vorhersage:
+# output path festlegen
 out_map_path <- file.path(
   envrmt$path_maps,
   "static_Ta_200_prediction_map.tif"
 )
 
+# predicten auf ganzes raster
 pred_map_static <- terra::predict(
-  map_predictors_static,      # die 10 Raster-Layer als Input
+  map_predictors_static,      # die 9 Raster-Layer als Input
   rf_model_static,            # das eben trainierte RF-Modell
   fun = function(model, data) {
-    predict(model, newdata = as.data.frame(data))  # caret-Modelle brauchen data.frame, kein SpatRaster
+    predict(model, newdata = as.data.frame(data))  # caret-modelle brauchen data.frame, kein SpatRaster format
   },
   filename = out_map_path,
   overwrite = TRUE,
@@ -391,7 +393,7 @@ rf_model_static_tuned <- caret::train(
   x = trainingDat[, predictor_names],
   y = trainingDat$Ta_200,
   method = "rf",
-  tuneGrid = expand.grid(mtry = 1:10),
+  tuneGrid = expand.grid(mtry = 1:9),
   trControl = ctrl,
   metric = "RMSE",
   importance = TRUE
@@ -400,7 +402,7 @@ rf_model_static_tuned <- caret::train(
 print(rf_model_static_tuned)
 
 # bester mtry wert
-rf_model_static_tuned$bestTune
+rf_model_static_tuned$bestTune # bester mtry wert = 2
 
 # Ergebnisse aller getesteten mtry Werte
 rf_model_static_tuned$results
@@ -414,6 +416,4 @@ saveRDS(
   )
 )
 
-
-## > mtry 3 ist wirklich das beste static modell ! 
-
+## > mtry 2 knapp am besten (RMSE 6.2811) is aber  praktisch gleich wie mtry 3 (6.2812)

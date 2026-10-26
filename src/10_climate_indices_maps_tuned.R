@@ -26,7 +26,7 @@ hourly_tif_data_tuned <- terra::rast(
 minmax_tuned <- terra::minmax(hourly_tif_data_tuned)
 global_range <- c(min(minmax_tuned[1, ]), max(minmax_tuned[2, ]))
 
-print(global_range)   # 1.802358 - 41.311558 °C (= Wertebereich des gesamten Datensatzes!)
+print(global_range)   # 2.177772 bis 40.582844 °C (= Wertebereich des gesamten Datensatzes!)
 
 
 
@@ -122,7 +122,7 @@ terra::plot(
   mar = c(3, 3, 4, 6)
 )
 
-title(main = "Marburg: Anzahl Hitzetage (Tmax >= 30°C, mtry=7 getunt), Mai-August", font.main = 2, cex.main = 1.1)
+title(main = "Marburg: Anzahl Hitzetage (Tmax >= 30°C, mtry=6 getunt), Mai-August", font.main = 2, cex.main = 1.1)
 
 
 # cords/points der stationen einladen um im plott einzubetten
@@ -158,10 +158,11 @@ tropen_naechte_tuned <- tropical_night_stack_tuned >= 20
 
 
 # über alle Nacht-Layer summieren, um pro Zelle die Gesamtanzahl an Tropennächten zu bekommen
-
 tropen_naechte_karte_tuned <- terra::app(tropen_naechte_tuned, fun = "sum")
+
 print(tropen_naechte_karte_tuned)
 plot(tropen_naechte_karte_tuned)
+
 
 # TIF speichern
 terra::writeRaster(
@@ -169,6 +170,7 @@ terra::writeRaster(
   file.path(envrmt$path_maps, "tropen_naechte_karte_tuned.tif"),
   overwrite = TRUE
 )
+
 
 # PNG speichern, mit Titel + Legende + Stationspunkten
 png(
@@ -179,11 +181,11 @@ png(
 terra::plot(
   tropen_naechte_karte_tuned,
   main = "",                                    # kein automatischer Titel > manuell unten 
-  plg = list(title = "Anzahl Tage", title.cex = 0.8),
+  plg = list(title = "Anzahl Nächte", title.cex = 0.8),
   mar = c(3, 3, 4, 6)
 )
 
-title(main = "Marburg: Anzahl Tropennächte (Tmin >= 20°C, mtry=7 getunt), Mai-August", font.main = 2, cex.main = 1.1)
+title(main = "Marburg: Anzahl Tropennächte (Tmin >= 20°C, mtry=6 getunt), Mai-August", font.main = 2, cex.main = 1.1)
 
 
 points(unique(coords_points[, c("x", "y")]), pch = 16, cex = 0.5)
@@ -202,7 +204,7 @@ dev.off()
 # durchschnitt über alle Nächte des Zeitraums, nicht nur die heißen (deswegen auch night_layer variable genutzt)
 nacht_temp_karte_tuned <- terra::app(night_layer, fun = "mean")
 print(nacht_temp_karte_tuned) 
-# 15,1 bis 18,1°C mittlere Nachttemperatur (ca. 3°C spanne) -> nachts ist UHI effekt stärker ausgeprägt als tagsüber (deshalb größerer Temp.-Spreizung)
+# 15,2 bis 18,2°C mittlere Nachttemperatur (ca. 3°C spanne) -> nachts ist UHI effekt stärker ausgeprägt als tagsüber (deshalb größerer Temp.-Spreizung)
 
 plot(nacht_temp_karte_tuned)
 
@@ -228,7 +230,7 @@ terra::plot(
   mar = c(3, 3, 4, 6)
 )
 
-title(main = "Marburg: Mittlere Nachttemperatur (mtry=7 getunt), Mai-August", font.main = 2, cex.main = 1.1)
+title(main = "Marburg: Mittlere Nachttemperatur (mtry=6 getunt), Mai-August", font.main = 2, cex.main = 1.1)
 
 points(unique(coords_points[, c("x", "y")]), pch = 16, cex = 0.5)
 dev.off()
@@ -268,7 +270,7 @@ terra::plot(
   mar = c(3, 3, 4, 6)
 )
 
-title(main = "Marburg: Anzahl heißer Stunden (Ta_200 >= 30°C, mtry=7 getunt), Mai-August", font.main = 2, cex.main = 1.1)
+title(main = "Marburg: Anzahl heißer Stunden (Ta_200 >= 30°C, mtry=6 getunt), Mai-August", font.main = 2, cex.main = 1.1)
 
 points(unique(coords_points[, c("x", "y")]), pch = 16, cex = 0.5)
 dev.off()
@@ -310,7 +312,7 @@ terra::plot(
   mar = c(3, 3, 4, 6)
 )
 
-title(main = "Marburg: Wärmebelastungsindex (Nächte, Basis 20°C,  mtry=7 getunt), Mai-August", font.main = 2, cex.main = 1.1)
+title(main = "Marburg: Wärmebelastungsindex (Nächte, Basis 20°C,  mtry=6 getunt), Mai-August", font.main = 2, cex.main = 1.1)
 
 points(unique(coords_points[, c("x", "y")]), pch = 16, cex = 0.5)
 dev.off()
@@ -324,14 +326,27 @@ dev.off()
 ### GIF aller STÜNDLICHEN Karten bauen 
 ### ==========================================
 
-# Stichprobe (nicht alle 2898 Layer, aus Performance-Gründen – jeder 10. reicht für eine gute Schätzung)
 sample_layers <- hourly_tif_data_tuned[[seq(1, terra::nlyr(hourly_tif_data_tuned), by = 10)]]
 
-# 2. und 98. Perzentil statt echtem Min/Max
-quantile_range <- terra::global(sample_layers, fun = quantile, probs = c(0.02, 0.98), na.rm = TRUE)
-display_range <- c(min(quantile_range[,1]), max(quantile_range[,2]))
+# ALLE Werte aus allen Stichproben-Layern in EINEN Vektor holen (nicht pro Layer!)
+alle_werte <- as.vector(terra::values(sample_layers))
+
+# EIN echtes 2./98.-Perzentil über ALLE Werte gemeinsam
+display_range <- quantile(alle_werte, probs = c(0.02, 0.98), na.rm = TRUE)
 print(display_range)
 
+# auf ganze Grad runden, für glatte Klassengrenzen
+range_min <- floor(display_range[1])
+range_max <- ceiling(display_range[2])
+
+# Klassengrenzen: 1 Grad Schritte
+breaks <- seq(range_min, range_max, by = 1)
+breaks[1] <- breaks[1] - 0.01
+breaks[length(breaks)] <- breaks[length(breaks)] + 0.01
+n_classes <- length(breaks) - 1
+
+farben <- hcl.colors(n_classes, "viridis")
+print(n_classes) # mein GIF hat jzt 25 Klassen/abstufungen in 1°C schritten! 
 
 
 ### funktion die layer einlädt > passenden zeitstempel dazu findet > die output dateinamen anpasst > png öffnen und plotten!
@@ -349,11 +364,16 @@ make_gif_frame <- function(layer_index) {
   # sonst sortiert R später "10" vor "2" alphabetisch statt numerisch, und dein GIF liefe in falscher Reihenfolge
   frame_path <- file.path(envrmt$path_gifs, paste0("frame_", sprintf("%04d", layer_index), ".png"))
   
+  
+  # Werte außerhalb des Bereichs auf die Extremwerte "klemmen" -> sonst weiß/leer!
+  r_clamped <- terra::clamp(r, lower = range_min, upper = range_max, values = TRUE)
+  
+  
   # png() öffnen → terra::plot() mit range = global_range (die feste Skala!) und main =  dem formatierten Zeitstempel → dev.off()
   png(
     filename = frame_path, width = 800, height = 640, res = 150)
   
-  terra::plot(r, range = display_range, main = format(time_stamp, "%Y-%m-%d %H:%M"))
+  terra::plot(r, breaks = breaks, col = farben, main = format(time_stamp, "%Y-%m-%d %H:%M"))
   
   dev.off()
   
@@ -405,7 +425,6 @@ final_gif <- magick::image_animate(pic_stack, fps = 10)
 magick::image_write(final_gif, path = file.path(envrmt$path_maps, "marburg_ta200_animation.gif"))
 
 
-### - test 
 
 ### ==========================================
 ### GIF: Stündliche Karten, automatische Pro-Stunde-Skala

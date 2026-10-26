@@ -58,7 +58,11 @@ packagesToLoad <- c(
   "xgboost",
   "maptiles",
   "tidyterra",
-  "leaflet"
+  "leaflet",
+  "htmlwidgets",
+  "ggrepel",
+  "patchwork",
+  "ggspatial"
 )
 
 

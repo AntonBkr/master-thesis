@@ -1,60 +1,16 @@
 ### ------------------------------------------------------------
 ### 0. Setup laden & daten einladen
 ### ------------------------------------------------------------
-source("00_setup_master.R")
+source("src/00_setup_master.R")
 
 
 ### ========================
-### Pre-Work
+### 1. Pre-Work
 ### ========================
 
-### 1. data names bug fixing 
-
-# auflistung der gebuggten files 
-list_bug_files <- list.files(envrmt$path_dynamic_tif,
-                             "^Ta_200_dynamic_[0-9]{4}-[0-9]{2}-[0-9]{2}\\.tif$", # pattern für dateien OHNE uhrzeit (nur mitternacht!)
-                             full.names = TRUE) 
-
-
-# check 
-length(list_bug_files)
-head(list_bug_files)
-
-
-# neue vektor variable mit den korrigierten pfaden
-fixed_files <- gsub(
-  "\\.tif$",              # nur das .tif GANZ AM ENDE matchen
-  "_00-00-00.tif",        # dadurch ersetzen
-  list_bug_files
-)
-
-# check bevor umbenannt wird
-head(fixed_files)
-head(list_bug_files)
-
-
-# dateien umbenennen
-file.rename(list_bug_files, fixed_files)
-
-
-# das gleiche für den png ordner! 
-list_bug_files_png <- list.files(envrmt$path_dynamic_png,
-                             "^Ta_200_dynamic_[0-9]{4}-[0-9]{2}-[0-9]{2}\\.png$", # pattern für dateien OHNE uhrzeit (nur mitternacht!)
-                             full.names = TRUE) 
-
-
-fixed_files_png <- gsub(
-  "\\.png$",              # nur das .tif GANZ AM ENDE matchen
-  "_00-00-00.png",        # dadurch ersetzen
-  list_bug_files_png
-)
-
-file.rename(list_bug_files_png, fixed_files_png)
-
-
-
-
-### 2. stündliche temperatur-karten einladen (tifs)
+# -------------------------------------------------
+# 1.1 stündliche temperatur-karten einladen (tifs)
+# -------------------------------------------------
 
 hourly_tif_path <- list.files(
   envrmt$path_dynamic_tif,
@@ -66,8 +22,9 @@ hourly_tif_data <- terra::rast(hourly_tif_path)
 
 
 
-
-### 3. metadaten  tabelle bauen
+# -------------------------------
+# 1.2 metadaten  tabelle bauen
+# -------------------------------
 
 ### Ziel: tabelle mit einer zeile pro layer mit "datetime", "date", "hour" 
 
@@ -111,23 +68,17 @@ head(hourly_meta)
 dim(hourly_meta) 
 
 
-
-### 4. Night ID erstellen und einfügen in "hourly_meta"
+# -----------------------------------------------------
+# 1.3 Night ID erstellen und einfügen in "hourly_meta"
+# -----------------------------------------------------
 
 ### Ziel: neue spalte "night_id" in "hourly_meta" erstellen
   # -> alle stunden derselben nacht denselben wert geben (auch wenn über 2 tage verteilt)
 
-
-### Rand-Effekt (siehe sanity check): erste und letzte Nacht haben nur 6 statt 12 std
-  # -> 2025-04-30: nur 6 Std (Morgen-Teil), weil Untersuchungszeitraum erst am 01.05. 00 Uhr beginnt -> keine Abendstunden (18-23 Uhr) vom 30.04. vorhanden
-  # -> 2025-08-31: nur 6 Std (Abend-Teil), weil Zeitraum am 01.09. 00 Uhr endet
-
-
-### Übersicht - drei kategorien von stunden:
+### Übersicht --> drei kategorien von stunden:
   # abend teil einer nacht (18-23 Uhr) -> bedingung = hour >= 18
   # morgen-teil einer nacht (0-5 Uhr)  -> bedingung = hour < 6
   # tagsüber (zwischen 6 und 18 uhr)   -> Rest (NA)
-
 
 hourly_meta <- hourly_meta %>%
   dplyr::mutate(
@@ -150,29 +101,29 @@ hourly_meta %>%
   dplyr::count(night_id) %>%
   tail()
 
-
-### 5. test auf 2 tage stack (2 layer)
-
-test_stack <- hourly_tif_data[[1:48]]
-test_index <- hourly_meta$date[1:48]
-
-daily_max_test <- terra::tapp(test_stack, index = test_index, fun = "max")
-
-print(daily_max_test)
+### Rand-Effekt (siehe sanity check): erste und letzte Nacht haben nur 6 statt 12 std
+# -> 2025-04-30: nur 6 Std (Morgen-Teil), weil Untersuchungszeitraum erst am 01.05. 00 Uhr beginnt -> keine Abendstunden (18-23 Uhr) vom 30.04 vorhanden
+# -> 2025-08-31: nur 6 Std (Abend-Teil), weil Zeitraum am 01.09 00 Uhr endet
 
 
-### 6. auf den ganzen stack anwenden (898 Layer, alle ~121 Tage)
+
+
+# ---------------------------------------------------------------
+# 1.4 Tagesmaxima pro Tag berechnen (2.898 Stunden -> 121 Tage)
+# ---------------------------------------------------------------
 
 daily_max_stack <- terra::tapp(hourly_tif_data, index = hourly_meta$date, fun = "max")
 # = 121 Layer (ein Tagesmaximum PRO TAG!!)
+
 
 
 ### ============================
 ### KARTE A: ANZAHL HITZETAGE 
 ### ============================
 
-
-### 1. schwellenwerte (°C) anwenden für berechnung der zielvariablen
+# -------------------------------------------------------------------
+# schwellenwerte (°C) anwenden für berechnung der zielvariablen
+# -------------------------------------------------------------------
 
 # für jede zelle & jeden tag prüfen: war der Wert >= 30?
 hitze_tage <- daily_max_stack >= 30
@@ -181,7 +132,9 @@ print(hitze_tage)
 # die fehlenden ~54 Stunden Anfang Juni scheinen 2 ganze Kalendertage komplett rauszunehmen (keine einzige Stunde an diesen Tagen vorhanden)
 
 
-### 2. Über alle Tag-Layer summieren
+# -------------------------------------
+# Über alle Tag-Layer summieren
+# -------------------------------------
 
 # nicht mehr pro Tag ein Ergebnis, sondern einen einzigen Wert pro Zelle ("an wie vielen der ~121 Tage wars an dieser Stelle ein Hitzetag?)
 hitze_tage_karte <- terra::app(hitze_tage, fun = "sum")
@@ -189,7 +142,9 @@ print(hitze_tage_karte)
 plot(hitze_tage_karte)
 
 
-### 3. Hitzetage-Karte speichern (TIF & PNG)
+# -----------------------------------------
+# Hitzetage-Karte speichern (TIF & PNG)
+# -----------------------------------------
 
 # TIF speichern
 terra::writeRaster(
@@ -396,7 +351,7 @@ png(
 terra::plot(
   waermebelastung_karte,
   main = "",
-  plg = list(title = "Index [°C-Summe]", title.cex = 0.8),   # <- hier korrigiert, innerhalb des Aufrufs
+  plg = list(title = "Index [°C-Summe]", title.cex = 0.8),   # <- hier korrigiert, innerhalb des Aufrufs  
   mar = c(3, 3, 4, 6)
 )
 
@@ -408,9 +363,4 @@ dev.off()
 ## -> wichtige Aussage zum Wärmebelastungsindex:
 # Der Wärmebelastungsindex einer Rasterzelle entspricht der Summe aller nächtlichen Überschreitungen von 20°C
 # über den gesamten Untersuchungszeitraum (in °C)
-
-
-
-
-
 

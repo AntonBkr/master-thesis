@@ -25,7 +25,7 @@ final_hourly_clean <- readr::read_csv(final_hourly_path, show_col_types = FALSE)
 predictor_names <- c(
   "elevation", "slope", "aspect_cos", "aspect_sin",
   "beb_50", "beb_100", "beb_250",#
-  "dist_lahn", "ndvi", "versiegelung"
+  "ndvi", "versiegelung"
 )
 
 
@@ -64,7 +64,7 @@ dim(model_data_dynamic) # 62114 14
 predictor_names_dynamic <- c(
   "elevation", "slope", "aspect_cos", "aspect_sin",
   "beb_50", "beb_100", "beb_250",
-  "dist_lahn", "ndvi", "versiegelung", "hourly_network_mean_Ta_200"
+  "ndvi", "versiegelung", "hourly_network_mean_Ta_200"
 )
 
 
@@ -106,13 +106,13 @@ ctrl <- caret::trainControl(
   verboseIter = TRUE
 )
 
-# XGBoost Tuning Grid -> alle 7 Hyperparameter Kombinationen
+# XGBoost Tuning Grid -> 12 Hyperparameter-Kombinationen (3 x 2 x 2)
 xgb_grid <- expand.grid( # erzeugt alle möglichen Kombinationen der angegebenen Parameter Werte!!
   nrounds = c(50, 200, 500),  # wie viele Bäume nacheinander gebaut werden
   max_depth = c(6, 8),   # wie "tief" oder komplex ein einzelner Baum sein darf
   eta = c(0.01, 0.3),    # die Lernrate: wie stark jeder neue Baum die Fehler der vorherigen korrigiert. 0,05 = vorsichtig/langsam
   gamma = 0,
-  colsample_bytree = 1,  # alle 11 Predictoren stehen bei jedem Baum zur Verfügung
+  colsample_bytree = 1,  # alle 10 Predictoren stehen bei jedem Baum zur Verfügung
   min_child_weight = 1,
   subsample = 0.7        # jeder Baum sieht nur 70% der Trainingszeilen (zufällig gezogen)
 )
@@ -136,21 +136,22 @@ xgb_model_dynamic <- caret::train(
 
 print(xgb_model_dynamic)
 # eta   max_depth  nrounds  RMSE       Rsquared   MAE       
-# 0.01  6           50      11.561994  0.9670000  10.8787212
-# 0.01  6          200       2.764519  0.9687110   2.4006743
-# 0.01  6          500       1.273005  0.9689583   0.9706771
-# 0.01  8           50      11.561324  0.9670665  10.8792232
-# 0.01  8          200       2.768060  0.9687119   2.4061261
-# 0.01  8          500       1.265065  0.9689755   0.9601431 <- beste modellierung (best RSME = 1.265065 !!) > verbesserung von ~3,6% zu RF-Model!
-# 0.30  6           50       1.317089  0.9673551   1.0062665
-# 0.30  6          200       1.356808  0.9655598   1.0325226
-# 0.30  6          500       1.394139  0.9635228   1.0563501
-# 0.30  8           50       1.310678  0.9663639   0.9929163
-# 0.30  8          200       1.356848  0.9636073   1.0216156
-# 0.30  8          500       1.390459  0.9612422   1.0434731
+# 0.01  6           50      11.566701  0.9671614  10.8851309
+# 0.01  6          200       2.775421  0.9688215   2.4149678
+# 0.01  6          500       1.286266  0.9690896   0.9818040
+# 0.01  8           50      11.567681  0.9673728  10.8878563
+# 0.01  8          200       2.776515  0.9688683   2.4164806
+# 0.01  8          500       1.274145  0.9690931   0.9661223 <- beste modellierung (best RMSE = 1.274145) > verbesserung von ~3,4% zu RF-Model (1.318686)
+# 0.30  6           50       1.309353  0.9673521   0.9954009
+# 0.30  6          200       1.345526  0.9651738   1.0211972
+# 0.30  6          500       1.389507  0.9634421   1.0509187
+# 0.30  8           50       1.337834  0.9661199   1.0110964
+# 0.30  8          200       1.386696  0.9631649   1.0395796
+# 0.30  8          500       1.431504  0.9603010   1.0669889
 
 # abspeichern
 saveRDS(xgb_model_dynamic, file.path(envrmt$path_models, "xgb_model_dynamic.rds"))
+
 
 
 ### -------------------------------------------------
@@ -180,14 +181,14 @@ print(station_validation_dynamic_tuned) # GrossseelheimerStr = Sensorausfall ab 
 # plot                        n  RMSE   MAE
 # 1 LiebigStr                 579  1.91 1.41 
 # 2 GrossseelheimerStr        376  1.77 1.32 
-# 3 AmKoeppel                 578  1.51 0.999
+# 3 AmKoeppel                 578  1.52 1.00
 # 4 Spiegelslustturm          578  1.50 1.13 
-# 5 GeschwisterSchollSchule   578  1.23 0.905
-# 6 Schlossparkbuehne         579  1.23 0.906
-# 7 Firmaneiplatz             579  1.22 0.936
-# 8 GeorgGassmannStadion      579  1.19 0.925
-# 9 FriedrichsPlatz           470  1.14 0.676
-# 10 WehrdaerStr              579  1.11 0.812
+# 5 GeschwisterSchollSchule   578  1.23 0.904
+# 6 Schlossparkbuehne         579  1.23 0.905
+# 7 Firmaneiplatz             579  1.22 0.938
+# 8 GeorgGassmannStadion      579  1.19 0.926
+# 9 FriedrichsPlatz           470  1.14 0.672
+# 10 WehrdaerStr              579  1.12 0.812
 
 
 
@@ -207,7 +208,9 @@ station_rmse_dynamic_plot_tuned <- ggplot2::ggplot(
   ggplot2::coord_flip() +             # horizontal, damit Stationsnamen lesbar bleiben
   ggplot2::labs(
     title = "RMSE pro Station",
-    subtitle = "Dynamisches Modell (XGBoost, eta=0.01, max_depth=8, nrounds=500)", # <- wichtig fuer den späteren Vergleich!
+    subtitle = paste0("Dynamisches Modell (XGBoost, eta=", xgb_model_dynamic$bestTune$eta,
+                      ", max_depth=", xgb_model_dynamic$bestTune$max_depth,
+                      ", nrounds=", xgb_model_dynamic$bestTune$nrounds, ")"),
     x = "Station",
     y = "RMSE [°C]"
   ) +
@@ -255,7 +258,9 @@ varimp_dynamic_plot_xgb <- ggplot2::ggplot(
   ggplot2::coord_flip() +
   ggplot2::labs(
     title = "Variable Importance",
-    subtitle = "Dynamisches Modell (XGBoost, eta=0.01, max_depth=8, nrounds=500)",
+    subtitle = paste0("Dynamisches Modell (XGBoost, eta=", xgb_model_dynamic$bestTune$eta,
+                      ", max_depth=", xgb_model_dynamic$bestTune$max_depth,
+                      ", nrounds=", xgb_model_dynamic$bestTune$nrounds, ")"),
     x = "Predictor",
     y = "Importance (0-100%)"
   ) +
@@ -285,7 +290,9 @@ obs_pred_dynamic_plot_xgb <- ggplot2::ggplot(       # <- FIX: Objektname jetzt _
   ) +
   ggplot2::labs(
     title = "Observed vs. Predicted Ta_200",
-    subtitle = "Dynamisches Modell (XGBoost, eta=0.01, max_depth=8, nrounds=500)",
+    subtitle = paste0("Dynamisches Modell (XGBoost, eta=", xgb_model_dynamic$bestTune$eta,
+                      ", max_depth=", xgb_model_dynamic$bestTune$max_depth,
+                      ", nrounds=", xgb_model_dynamic$bestTune$nrounds, ")"),
     x = "Beobachtete Ta_200 [°C]",
     y = "Vorhergesagte Ta_200 [°C]"
   ) +
@@ -313,7 +320,7 @@ map_predictors_static <- pred_stack[[predictor_names]]
 
 
 # gewählte Testtunde: deine bekannte Hitzewellen-Stunde
-test_datetime <- as.POSIXct("2025-07-02 14:00:00", tz = "Europe/Berlin")
+test_datetime <- as.POSIXct("2025-07-02 14:00:00", tz = "UTC") # utc wie auch in "finally_hour_clean.csv" 
 
 
 # Netzwerk-Mittel für genau diese Stunde holen
@@ -350,8 +357,8 @@ differenz_karte <- xgb_karte - rf_karte
 print(differenz_karte)   # min/max der Differenz in °C
 terra::plot(differenz_karte, main = "Differenz: XGBoost - RF (02.07., 14 Uhr)")
 
-# Ergebnis: Differenz -4,2 bis +1,6°C trotz ähnlicher Gesamt-RMSE (~3,6% Unterschied)
-# -> deutet auf größere Abweichungen in extrapolierten Bereichen hin (evtl. AOA-Zusammenhang)
+# Ergebnis: Differenz -2,5 bis +3,2°C, im Mittel +1,05°C (XGBoost wärmer) bei ähnlicher Gesamt-RMSE (~3,4% Unterschied)
+# -> eher systematischer Versatz in dieser Extremstunde als räumliches Muster (RF mittelt Extremwerte stärker)
 # -> Entscheidung "voller Loop ja/nein" noch offen, siehe Merkzettel/Notizen
 
 terra::writeRaster(

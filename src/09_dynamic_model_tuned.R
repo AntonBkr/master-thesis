@@ -1,7 +1,7 @@
 ### ------------------------------------------------------------
 ### 0. Setup laden & daten einladen
 ### ------------------------------------------------------------
-source("00_setup_master.R")
+source("src/00_setup_master.R")
 
 # pth festlegen
 final_hourly_path <- file.path(
@@ -24,8 +24,8 @@ final_hourly_clean <- readr::read_csv(final_hourly_path, show_col_types = FALSE)
 # predictoren festlegen
 predictor_names <- c(
   "elevation", "slope", "aspect_cos", "aspect_sin",
-  "beb_50", "beb_100", "beb_250",#
-  "dist_lahn", "ndvi", "versiegelung"
+  "beb_50", "beb_100", "beb_250",
+  "ndvi", "versiegelung"
 )
 
 
@@ -59,14 +59,14 @@ model_data_dynamic <- dplyr::left_join(final_hourly_clean, hourly_context, by = 
 
 
 
-dim(model_data_dynamic) # 62114 14
+dim(model_data_dynamic) # 62114 13
 
 
 # hinzufügen des neuen pred in den stack
 predictor_names_dynamic <- c(
   "elevation", "slope", "aspect_cos", "aspect_sin",
   "beb_50", "beb_100", "beb_250",
-  "dist_lahn", "ndvi", "versiegelung", "hourly_network_mean_Ta_200"
+  "ndvi", "versiegelung", "hourly_network_mean_Ta_200"
 )
 
 
@@ -124,7 +124,7 @@ rf_model_dynamic_tuned_v2 <- caret::train(
   x = trainingDat[, predictor_names_dynamic],
   y = trainingDat$Ta_200,
   method = "rf",
-  tuneGrid = expand.grid(mtry = c(3, 4, 5, 6, 7, 8, 9, 10, 11)), # kompletter bereich (11 predictoren)
+  tuneGrid = expand.grid(mtry = c(3, 4, 5, 6, 7, 8, 9, 10)), # kompletter bereich (10 predictoren)
   trControl = ctrl,
   metric = "RMSE",
   importance = TRUE
@@ -142,15 +142,14 @@ saveRDS(rf_model_dynamic_tuned, file.path(envrmt$path_models, "rf_dynamic_model_
 # RMSE = Root Mean Square Error (= "wie groß ist die durchschnittliche Abweichung zwischen Vorhersage und echtem Wert")
 
 #  mtry  RMSE      Rsquared   MAE      
-  #3    2.396602  0.9215195  1.7697273
-  #4    1.791531  0.9490105  1.3400951
-  #5    1.469780  0.9619868  1.1130115
-  #6    1.334996  0.9670587  1.0094773
-  #7    1.311813  0.9684795  0.9867857 <- bester mtry-Wert => "Wenn das Modell eine komplett unbekannte Station vorhersagen soll, liegt es im Schnitt um 1,31°C daneben."
-  #8    1.322675  0.9684576  0.9912808
-  #9    1.347435  0.9677886  1.0051818
-  #10    1.381235  0.9667522  1.0257779
-  #11    1.416938  0.9649740  1.0464327
+#3    2.174806  0.9312235  1.6117917
+#4    1.634518  0.9553395  1.2302995
+#5    1.384944  0.9650276  1.0488606
+#6    1.318686  0.9681255  0.9963572 <- bester mtry-Wert => "Wenn das Modell eine komplett unbekannte Station vorhersagen soll, liegt es im Schnitt um 1,32°C daneben."
+#7    1.326777  0.9685699  0.9970836
+#8    1.350861  0.9679775  1.0096907
+#9    1.384457  0.9669259  1.0289944
+#10   1.424259  0.9650436  1.0500713
 
 
 
@@ -183,9 +182,9 @@ print(station_validation_dynamic_tuned) # GrossseelheimerStr = Sensorausfall ab 
 
 
 
-### ----------------------------------------------
-### 06. Plot: RMSE pro Station (dynamic-Modell tuned)
-### ----------------------------------------------
+### ----------------------------------------------------------------------
+### 06a. RMSE pro Station –> Test-Split (unbekannte Stunden, bekannte Station)
+### ----------------------------------------------------------------------
 
 # Balkendiagramm bauen: eine Station pro Balken, sortiert nach RMSE
 station_rmse_dynamic_plot_tuned <- ggplot2::ggplot(
@@ -199,7 +198,7 @@ station_rmse_dynamic_plot_tuned <- ggplot2::ggplot(
   ggplot2::coord_flip() +             # horizontal, damit Stationsnamen lesbar bleiben
   ggplot2::labs(
     title = "RMSE pro Station",
-    subtitle = "Dynamisches Modell, mtry getunt (räumliche Predictoren mit network-mean)", # <- wichtig fuer den spaeteren Vergleich!
+    subtitle = paste0("Dynamisches Modell (mtry = ", rf_model_dynamic_tuned$bestTune$mtry, "), Test-Split: zurückgehaltene Stunden"),
     x = "Station",
     y = "RMSE [°C]"
   ) +
@@ -225,8 +224,118 @@ ggplot2::ggsave(
 # Testverfahren aus den 20% zurückgehaltenen Stunden (80 20 split)
 # "wie viel Grad hat sich das Modell bei dieser Station im Schnitt geirrt, wenn es ihre unbekannten Stunden vorhersagen sollte"
 
-# 1,31°C (von Oben) = 1 Durchschnittswert, Test: unbekannte Orte
-# 0,48–1,9°C        = 22 Einzelwerte, Test: unbekannte Zeitpunkte an bekannten Orten
+# 1,32°C (von Oben) = 1 Durchschnittswert, Test: unbekannte Orte
+# 0,49–1,94°C       = 22 Einzelwerte, Test: unbekannte Zeitpunkte an bekannten Orten
+
+
+### ----------------------------------------------------------------------
+### 06b. RMSE pro Station – LOSO-CV (Station komplett unbekannt)
+### ----------------------------------------------------------------------
+
+# falls das Modell nicht gerade im Speicher ist: gespeichertes Modell laden (statt neu trainieren!)
+# rf_model_dynamic_tuned <- readRDS(file.path(envrmt$path_models, "rf_dynamic_model_tuned.rds"))
+
+# Sicherheitscheck: trainingDat muss exakt der Datensatz sein, mit dem das Modell trainiert wurde
+stopifnot(isTRUE(all.equal(trainingDat$Ta_200, rf_model_dynamic_tuned$trainingData$.outcome)))
+
+# LOSO-Vorhersagen (für das beste mtry) den Stationen zuordnen
+loso_pred <- rf_model_dynamic_tuned$pred
+loso_pred$plot <- trainingDat$plot[loso_pred$rowIndex]
+
+station_validation_loso <- loso_pred %>%
+  dplyr::group_by(plot) %>%
+  dplyr::summarise(
+    n    = dplyr::n(),
+    RMSE = sqrt(mean((pred - obs)^2)),
+    MAE  = mean(abs(pred - obs)),
+    bias = mean(pred - obs),        # > 0 = Modell überschätzt, < 0 = unterschätzt
+    .groups = "drop"
+  ) %>%
+  dplyr::arrange(dplyr::desc(RMSE))
+
+print(station_validation_loso)
+
+
+# Balkendiagramm (gleicher Aufbau wie 06a)
+station_rmse_loso_plot <- ggplot2::ggplot(
+  station_validation_loso,
+  ggplot2::aes(x = reorder(plot, RMSE), y = RMSE)
+) +
+  ggplot2::geom_col() +
+  ggplot2::coord_flip() +
+  ggplot2::labs(
+    title = "RMSE pro Station",
+    subtitle = paste0("Dynamisches Modell (mtry = ", rf_model_dynamic_tuned$bestTune$mtry, "), Leave-One-Station-Out-CV"),
+    x = "Station",
+    y = "RMSE [°C]"
+  ) +
+  ggplot2::theme_minimal()
+
+print(station_rmse_loso_plot)
+
+
+# als csv und png abspeichern
+readr::write_csv(
+  station_validation_loso,
+  file.path(envrmt$path_tables, "dynamic_Ta_200_station_validation_loso.csv")
+)
+
+ggplot2::ggsave(
+  filename = file.path(envrmt$path_figures, "dynamic_Ta_200_station_rmse_loso.png"),
+  plot = station_rmse_loso_plot,
+  width = 8, height = 6, dpi = 300
+)
+
+# LOSO: "wie viel Grad liegt das Modell an dieser Station daneben, wenn es die Station nie gesehen hat"
+# > 0,62 (ElisabethBlochmannPlatz) bis 2,41 °C (LiebigStr) > Datenausfall / Datenfehler an genau diesen Stationen!
+
+
+### ----------------------------------------------------------------------
+### 06c. LOSO nach Tageszeit + Vergleich mit Referenz (nur Netzwerkmittel)
+### ----------------------------------------------------------------------
+# Referenz: an jeder Station einfach das stündliche Netzwerkmittel als "Vorhersage"
+#  -> Differenz zum RF = Mehrwert der räumlichen Predictoren
+# Berechnung wie bei caret: RMSE pro Station, dann Mittelwert über die 22 Stationen
+# Nacht = 18-6 Uhr (wie bei den Nachtindizes), Tag = 6-18 Uhr
+
+loso_vergleich <- loso_pred %>%
+  dplyr::mutate(
+    netzmittel = trainingDat$hourly_network_mean_Ta_200[rowIndex],
+    stunde     = lubridate::hour(trainingDat$datetime[rowIndex]),
+    zeitraum   = ifelse(stunde >= 18 | stunde < 6, "nacht", "tag")
+  )
+
+rmse_vergleich <- function(df) {
+  df %>%
+    dplyr::group_by(plot) %>%
+    dplyr::summarise(
+      rf  = sqrt(mean((pred - obs)^2)),
+      ref = sqrt(mean((netzmittel - obs)^2)),
+      .groups = "drop"
+    ) %>%
+    dplyr::summarise(
+      RMSE_RF             = mean(rf),
+      RMSE_Netzwerkmittel = mean(ref)
+    )
+}
+
+validierung_tageszeit <- dplyr::bind_rows(
+  gesamt = rmse_vergleich(loso_vergleich),
+  tag    = rmse_vergleich(dplyr::filter(loso_vergleich, zeitraum == "tag")),
+  nacht  = rmse_vergleich(dplyr::filter(loso_vergleich, zeitraum == "nacht")),
+  .id = "zeitraum"
+) %>%
+  dplyr::mutate(verbesserung_pct = round(100 * (1 - RMSE_RF / RMSE_Netzwerkmittel), 1))
+
+print(validierung_tageszeit)
+
+readr::write_csv(
+  validierung_tageszeit,
+  file.path(envrmt$path_tables, "dynamic_Ta_200_loso_tageszeit_referenz.csv")
+)
+
+
+
 
 ### -----------------------------
 ### 07. Variable Importance
